@@ -1,1 +1,1 @@
-module custom-protocol-over-tcp
+module customproto

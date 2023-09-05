@@ -1,94 +1,33 @@
-package main
+package server
 
 import (
-	"bufio"
-	"encoding/json"
-	"fmt"
-	"io"
+	"log"
 	"net"
-	"os"
-	"strconv"
-	"strings"
-	"custom-protocol-over-tcp/protocol"
 )
 
-const (
-	basePath = "/home/lrhaoo/GolandProjects/gmc/server/"
-)
-
-func handle(conn net.Conn) {
-	reader := bufio.NewReader(conn)
-	for {
-		err := protocol.PeekPacketKind(reader)
-		if err != nil {
-			if err == io.EOF {
-				break
-			} else {
-				fmt.Println("fuckyou: ", err)
-			}
-		}
-
-		recv, kind, err := protocol.UnPack(reader); if err != nil {
-			fmt.Println("recv err: ", err)
-		}
-
-		switch kind {
-		case protocol.TEXT:
-			fmt.Println(string(recv))
-			break
-		case protocol.JSON:
-			p := &protocol.Packet{}
-			err = json.Unmarshal(recv, p); if err != nil {
-				fmt.Println("unmarshal fail: ", err)
-			}
-			fmt.Println(p.Id, p.Content)
-			break
-		case protocol.FILE_META:
-			fileMeta := string(recv)
-			arr := strings.Split(fileMeta, "_")
-			filename := arr[0]
-			filesize, _ := strconv.Atoi(arr[1])
-			size := 0
-			fmt.Println("file meta: ", filename, filesize)
-
-			fp, err := os.OpenFile(basePath+"test.mp4", os.O_CREATE|os.O_WRONLY, 0666); if err != nil {
-				fmt.Println(err)
-			}
-
-			for size < filesize {
-				recv, kind, err = protocol.UnPack(reader); if err != nil {
-					if err == io.EOF {
-						continue
-					} else {
-						fmt.Println("recv file err: ", err)
-					}
-				}
-				if kind == protocol.FILE {
-					_, err = fp.Write(recv); if err != nil {
-						fmt.Println("write file err: ", err)
-					}
-					size += len(recv)
-				} else {
-					fmt.Println("something err")
-				}
-			}
-			break
-		}
-	}
+type Server struct {
+	addr     string
+	listener net.Listener
+	handle   handleFunc
 }
 
-func main() {
-	addr := "localhost:12345"
+type handleFunc func(conn net.Conn)
+
+func New(addr string, handler handleFunc) (*Server, error) {
 	server, err := net.Listen("tcp", addr)
 	if err != nil {
-		fmt.Println("connect fail")
+		return nil, err
 	}
+	return &Server{addr: addr, listener: server, handle: handler}, nil
+}
+
+func (s *Server) Run() {
+	log.Printf("Server is running, Listen at %s\n", s.addr)
 	for {
-		conn, err := server.Accept()
+		conn, err := s.listener.Accept()
 		if err != nil {
-			fmt.Println("accept err: ", err.Error())
-			os.Exit(1)
+			log.Println("accept err: ", err.Error())
 		}
-		go handle(conn)
+		go s.handle(conn)
 	}
 }
