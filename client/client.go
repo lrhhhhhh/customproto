@@ -22,54 +22,54 @@ func New(addr string) (*Client, error) {
 	return &Client{addr: addr, conn: conn}, nil
 }
 
+// SendFile 先发送文件的meta信息（大小，名字），然后再发送文件内容
 func (c *Client) SendFile(filename string) error {
-	fp, err := os.Open(filename)
-	if err != nil {
-		return err
-	}
-
-	buf := make([]byte, 1500)
 	meta, err := os.Stat(filename)
 	if err != nil {
 		return err
 	}
 
-	d1 := filename + "_" + strconv.Itoa(int(meta.Size()))
-	log.Println(d1)
+	fileMetaStr := meta.Name() + "_" + strconv.Itoa(int(meta.Size()))
+	log.Printf("Send file, filename=%s, size=%d\n", meta.Name(), meta.Size())
 
-	//filemeta, err := protocol.Pack([]byte(d1), protocol.FileMeta)
-	p := protocol.Packet{Data: []byte(d1), Kind: protocol.FileMeta}
-	filemeta, err := p.Pack()
+	p := protocol.Packet{Data: []byte(fileMetaStr), Kind: protocol.FILE}
+	fileMetaData, err := p.Pack()
 	if err != nil {
 		return err
 	}
 
-	_, err = c.conn.Write(filemeta)
+	_, err = c.conn.Write(fileMetaData)
 	if err != nil {
 		return err
 	}
 
+	buf := make([]byte, 1500)
+	fp, err := os.Open(filename)
+	if err != nil {
+		return err
+	}
+
+	var size int
 	for {
 		n, err := fp.Read(buf)
+		size += n
 		if err != nil {
 			if err == io.EOF {
-				log.Println("read EOF") // EOF ???
+				break
 			} else {
-				log.Println("some err: ", err)
+				return err // todo: unknown error
 			}
-			break
 		}
 
-		tp := protocol.Packet{Data: buf[:n], Kind: protocol.FILE}
-		r, err := tp.Pack()
+		filePacket := protocol.Packet{Data: buf[:n], Kind: protocol.FILE}
+		r, err := filePacket.Pack()
 		if err != nil {
-			return err // todo: ??
+			return err
 		}
 
 		_, err = c.conn.Write(r)
 		if err != nil {
-			log.Println(err)
-			return err // todo: ??
+			return err
 		}
 	}
 	return nil
@@ -79,7 +79,6 @@ func (c *Client) SendText(text string) error {
 	p := protocol.Packet{Data: []byte(text), Kind: protocol.TEXT}
 	data, err := p.Pack()
 	if err != nil {
-		log.Println("pack error: ", err)
 		return err
 	}
 	_, err = c.conn.Write(data)
@@ -89,11 +88,8 @@ func (c *Client) SendText(text string) error {
 	return nil
 }
 
-func (c *Client) SendJson(jsondata []byte) error {
-	// jsondata produced by json.Marshal()
-	// jsonData, _ := json.Marshal(p)
-
-	p := protocol.Packet{Data: jsondata, Kind: protocol.JSON}
+func (c *Client) SendJson(jsonData []byte) error {
+	p := protocol.Packet{Data: jsonData, Kind: protocol.JSON}
 	data, err := p.Pack()
 	_, err = c.conn.Write(data)
 	if err != nil {

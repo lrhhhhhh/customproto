@@ -9,20 +9,17 @@ import (
 )
 
 const (
-	INVALID  uint16 = 0
-	TEXT     uint16 = 1
-	JSON     uint16 = 2
-	FileMeta uint16 = 3
-	FILE     uint16 = 4
+	INVALID uint16 = 0
+	TEXT    uint16 = 1
+	JSON    uint16 = 2
+	FILE    uint16 = 3
 )
 
 var (
-	errLargeData = errors.New("data larger than 65535")
+	errPacketSize = errors.New("packet Len larger than 65535")
 )
 
 type Packet struct {
-	//Id      int    `json:"id"`
-	//Content string `json:"content"`
 	Kind uint16
 	Len  uint16
 	Data []byte
@@ -37,6 +34,9 @@ func PeekPacketKind(reader *bufio.Reader) error {
 }
 
 func (p *Packet) Pack() ([]byte, error) {
+	if len(p.Data) >= 1<<16 {
+		return nil, errPacketSize
+	}
 	length := int16(len(p.Data))
 	data := &bytes.Buffer{}
 	if err := binary.Write(data, binary.LittleEndian, length); err != nil {
@@ -57,27 +57,21 @@ func (p *Packet) UnPack(rd io.Reader) error {
 	if err != nil {
 		return err
 	}
-	length, _ := bytesToUint16(header[0:2])
-	kind, _ := bytesToUint16(header[2:4])
-	if length > 1<<16-1 {
-		return errLargeData
-	}
+	length := bytesToUint16(header[0:2])
+	kind := bytesToUint16(header[2:4])
 
 	packet := make([]byte, int(4+length))
-	_, err = io.ReadFull(reader, packet)
-	if err != nil {
+	if _, err = io.ReadFull(reader, packet); err != nil {
 		return err
 	}
 
 	p.Data = packet[4:]
 	p.Kind = kind
+
 	return nil
 }
 
-func bytesToUint16(buf []byte) (uint16, error) {
-	if len(buf) != 2 {
-		return 0, errors.New("len(buf) must equal 2")
-	} else {
-		return binary.LittleEndian.Uint16(buf), nil
-	}
+func bytesToUint16(buf []byte) uint16 {
+	// len(buf) must equal 2
+	return binary.LittleEndian.Uint16(buf)
 }

@@ -3,23 +3,12 @@ package main
 import (
 	"bufio"
 	"customproto/client"
+	"customproto/model"
+	"encoding/json"
 	"log"
 	"os"
 	"strings"
 )
-
-//var data1 = "response a short message"
-//var data2 = "response a very long text: "
-//
-//func init() {
-//	for i := 0; i < 4096; i++ {
-//		data2 += string(byte('a' + i%26))
-//	}
-//}
-
-func testLargeSizeText() {
-
-}
 
 func main() {
 	addr := "localhost:12345"
@@ -27,7 +16,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-
+	log.Println("Client is running, connect to ", addr)
 	var cmd, data, line string
 	reader := bufio.NewReader(os.Stdin)
 	for {
@@ -44,12 +33,17 @@ func main() {
 				log.Println("Send Text err:", err)
 			}
 		case "json":
-			if err := c.SendJson([]byte{}); err != nil {
+			msg := model.Message{Content: data}
+			dump, err := json.Marshal(msg)
+			if err != nil {
+				log.Println("json marshal err:", err)
+			}
+			if err := c.SendJson(dump); err != nil {
 				log.Println("Send Json err:", err)
 			}
 		case "file":
-			// filename = "/home/lrhaoo/Desktop/test.mp4"
-			if err := c.SendFile(data); err != nil {
+			filename := strings.Trim(data, " \n")
+			if err := c.SendFile(filename); err != nil {
 				log.Println("Send file err:", err)
 			}
 		default:

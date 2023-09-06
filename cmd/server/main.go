@@ -7,7 +7,6 @@ import (
 	"customproto/server"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"log"
 	"net"
@@ -40,7 +39,6 @@ func handle(conn net.Conn) {
 		switch p.Kind {
 		case protocol.TEXT:
 			log.Println(string(p.Data))
-			break
 		case protocol.JSON:
 			var msg model.Message
 			err = json.Unmarshal(p.Data, &msg)
@@ -48,41 +46,42 @@ func handle(conn net.Conn) {
 				log.Println("unmarshal err:", err)
 			}
 			log.Printf("%+v\n", msg)
-			break
-		case protocol.FileMeta:
+		case protocol.FILE:
 			filemeta := string(p.Data)
 			arr := strings.Split(filemeta, "_")
 			filename := arr[0]
 			filesize, _ := strconv.Atoi(arr[1])
-			log.Println("file meta: ", filename, filesize)
+			saveTo := UploadFolder + filename
+			log.Printf("recv file, filename=%s, size=%d, saveTo=%s\n", filename, filesize, saveTo)
 
-			fp, err := os.OpenFile(UploadFolder+"test.mp4", os.O_CREATE|os.O_WRONLY, 0666)
+			fp, err := os.OpenFile(saveTo, os.O_CREATE|os.O_WRONLY, 0777)
 			if err != nil {
 				log.Println(err)
-				break
+				continue
 			}
 
-			for size := 0; size < filesize; {
-				tp := new(protocol.Packet)
-				err = tp.UnPack(reader)
+			// 处理被分块的文件
+			var size int
+			filePacket := new(protocol.Packet)
+			for size = 0; size < filesize; {
+				err = filePacket.UnPack(reader)
 				if err != nil {
 					if err == io.EOF {
+						log.Println(err)
 						continue
 					} else {
-						fmt.Println("recv file err: ", err)
+						log.Println("recv file err: ", err)
 					}
 				}
-				if p.Kind == protocol.FILE {
-					_, err = fp.Write(p.Data)
-					if err != nil {
+				if filePacket.Kind == protocol.FILE {
+					if n, err := fp.Write(filePacket.Data); err != nil || n != len(filePacket.Data) {
 						log.Println("write file err: ", err)
 					}
-					size += len(p.Data)
+					size += len(filePacket.Data)
 				} else {
 					panic(errors.New("invalid packet kind"))
 				}
 			}
-			break
 		}
 	}
 }
